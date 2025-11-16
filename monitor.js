@@ -8,8 +8,8 @@ import fetch from "node-fetch";
 const APP_BOT_ID = process.env.APP_BOT_ID || "1312830013573169252";
 
 // Main rule: left >= RULE_LEFT_MIN AND right < RULE_RIGHT_MAX
-const RULE_LEFT_MIN = parseInt(process.env.RULE_LEFT_MIN || "1", 10);
-const RULE_RIGHT_MAX = parseInt(process.env.RULE_RIGHT_MAX || "1500", 10);
+const RULE_LEFT_MIN = parseInt(process.env.RULE_LEFT_MIN || "5", 10);
+const RULE_RIGHT_MAX = parseInt(process.env.RULE_RIGHT_MAX || "500", 10);
 
 // Channel to post alerts to (set in Render env)
 const ALERT_CHANNEL_ID = process.env.CHANNEL_ID;
@@ -193,4 +193,5 @@ if (!process.env.BOT_TOKEN) {
     console.error("Login failed:", err);
   });
 }
+
 
