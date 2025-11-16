@@ -1,6 +1,7 @@
 import { Client, GatewayIntentBits } from "discord.js";
 import fetch from "node-fetch";
-import dotenv from "dotenv";
+
+// No dotenv needed on Render
 
 dotenv.config();
 
@@ -75,3 +76,4 @@ client.on("messageCreate", async (message) => {
 });
 
 client.login(BOT_TOKEN);
+
