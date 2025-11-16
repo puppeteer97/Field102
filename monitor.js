@@ -1,79 +1,97 @@
-import { Client, GatewayIntentBits } from "discord.js";
+import { Client, GatewayIntentBits, Partials } from "discord.js";
 import fetch from "node-fetch";
 
-// No dotenv needed on Render
-
-dotenv.config();
-
-const BOT_TOKEN = process.env.BOT_TOKEN;
+// -------------------------
+// CONFIGURATION RULES
+// -------------------------
+const RULE_LEFT_MIN = 3;          // minimum left value
+const RULE_RIGHT_MAX = 1500;      // maximum right value
 const CHANNEL_ID = process.env.CHANNEL_ID;
+const NOTIFY_ROLE = process.env.NOTIFY_ROLE;
 
-const PUSHOVER_TOKEN = process.env.PUSHOVER_TOKEN;
-const PUSHOVER_USER = process.env.PUSHOVER_USER;
-
+// -------------------------
+// DISCORD CLIENT
+// -------------------------
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent
-    ]
+    ],
+    partials: [Partials.Channel]
 });
 
-client.once("ready", () => {
-    console.log("Monitor is online as:", client.user.tag);
-});
+// -------------------------
+// KEEP ALIVE PING (Render)
+// -------------------------
+const KEEPALIVE_URL = process.env.KEEPALIVE_URL;
+setInterval(() => {
+    if (KEEPALIVE_URL) fetch(KEEPALIVE_URL).catch(() => {});
+}, 5 * 60 * 1000); // 5 minutes
 
-client.on("messageCreate", async (message) => {
-    if (message.channel.id !== CHANNEL_ID) return;
-    if (!message.content.includes(":narrow_a:")) return;
+// -------------------------
+// PARSER FUNCTION
+// -------------------------
+function parseNaiMessage(text) {
+    const lines = text.split("\n").filter(l => l.includes("¦"));
 
-    const lines = message.content.split("\n");
-    const results = [];
+    if (lines.length === 0) return null;
 
-    for (const line of lines) {
-        // UNIVERSAL REGEX for Nairi drops
-        const match = line.match(
-            /:narrow_a:.*?¦\s*([0-9]+)\s*:nwl_s:.*?¦\s*([0-9]+)\s*¦\s*(.+)/
-        );
+    let results = [];
 
-        if (match) {
-            const left = parseInt(match[1]);
-            const right = parseInt(match[2]);
-            const name = match[3].trim();
+    for (let line of lines) {
+        const cleanLine = line.replace(/\s+/g, " ").trim();
 
-            if (!isNaN(left) && !isNaN(right)) {
-                results.push({ left, right, name });
-            }
-        }
+        // Extract numbers + character name
+        // Format looks like:
+        // :narrow_a::none_1:¦    3 :nwl_s: ¦ :nt1_s: ¦ 2455 ¦ Farah Karim · Call of Duty
+        
+        const regex = /¦\s*(\d+)\s*:nwl_s:\s*¦\s*:\w+:\s*¦\s*(\d+)\s*¦\s*(.+)$/;
+
+        let match = cleanLine.match(regex);
+        if (!match) continue;
+
+        let left = parseInt(match[1]);
+        let right = parseInt(match[2]);
+        let character = match[3].trim();
+
+        results.push({ left, right, character });
     }
 
-    // ---- YOUR FILTER RULE ----
-    const matches = results.filter(entry => entry.left >= 5 && entry.right < 1500);
+    return results.length > 0 ? results : null;
+}
 
-    if (matches.length > 0) {
-        console.log("MATCH FOUND:", matches);
+// -------------------------
+// EVENT LISTENER
+// -------------------------
+client.on("messageCreate", async (msg) => {
+    if (msg.author.id !== process.env.APP_BOT_ID) return;
+    if (!msg.content.includes("¦")) return;
 
-        const body = matches
-            .map(m => `(${m.left} / ${m.right}) — ${m.name}`)
-            .join("\n");
+    const parsed = parseNaiMessage(msg.content);
+    if (!parsed) return;
 
-        // Send Pushover Notification
-        try {
-            await fetch("https://api.pushover.net/1/messages.json", {
-                method: "POST",
-                body: new URLSearchParams({
-                    token: PUSHOVER_TOKEN,
-                    user: PUSHOVER_USER,
-                    message: `Nairi Match Found:\n${body}`
-                })
-            });
+    const channel = await client.channels.fetch(CHANNEL_ID);
 
-            console.log("Pushover Sent.");
-        } catch (err) {
-            console.error("❌ Pushover Error:", err);
+    for (let entry of parsed) {
+        if (entry.left >= RULE_LEFT_MIN && entry.right <= RULE_RIGHT_MAX) {
+            channel.send(
+                `${NOTIFY_ROLE} ⚠️ **Hit Found!**\n` +
+                `**Character:** ${entry.character}\n` +
+                `Left: **${entry.left}** | Right: **${entry.right}**`
+            );
         }
     }
 });
 
-client.login(BOT_TOKEN);
+// -------------------------
+// BOT READY
+// -------------------------
+client.on("clientReady", () => {
+    console.log(`Bot is online as ${client.user.tag}`);
+});
 
+// -------------------------
+// LOGIN
+// -------------------------
+client.login(process.env.BOT_TOKEN);
