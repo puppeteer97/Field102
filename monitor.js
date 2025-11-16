@@ -4,7 +4,7 @@ import fetch from "node-fetch";
 // -------------------------
 // CONFIGURATION RULES
 // -------------------------
-const RULE_LEFT_MIN = 3;          // minimum left value
+const RULE_LEFT_MIN = 0;          // minimum left value
 const RULE_RIGHT_MAX = 1500;      // maximum right value
 const CHANNEL_ID = process.env.CHANNEL_ID;
 const NOTIFY_ROLE = process.env.NOTIFY_ROLE;
@@ -95,3 +95,4 @@ client.on("clientReady", () => {
 // LOGIN
 // -------------------------
 client.login(process.env.BOT_TOKEN);
+
