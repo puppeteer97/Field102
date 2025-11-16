@@ -1,5 +1,8 @@
 import { Client, GatewayIntentBits } from "discord.js";
 import fetch from "node-fetch";
+import dotenv from "dotenv";
+
+dotenv.config();
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const CHANNEL_ID = process.env.CHANNEL_ID;
@@ -16,7 +19,7 @@ const client = new Client({
 });
 
 client.once("ready", () => {
-    console.log("Bot logged in as", client.user.tag);
+    console.log("Monitor is online as:", client.user.tag);
 });
 
 client.on("messageCreate", async (message) => {
@@ -24,35 +27,50 @@ client.on("messageCreate", async (message) => {
     if (!message.content.includes(":narrow_a:")) return;
 
     const lines = message.content.split("\n");
-    const pairs = [];
+    const results = [];
 
     for (const line of lines) {
-        const parts = line.split(":nwl_s:");
-        if (parts.length < 2) continue;
+        // UNIVERSAL REGEX for Nairi drops
+        const match = line.match(
+            /:narrow_a:.*?¦\s*([0-9]+)\s*:nwl_s:.*?¦\s*([0-9]+)\s*¦\s*(.+)/
+        );
 
-        const left = parseInt(parts[0].replace(/\D/g, ""));
-        const right = parseInt(parts[1].replace(/\D/g, ""));
+        if (match) {
+            const left = parseInt(match[1]);
+            const right = parseInt(match[2]);
+            const name = match[3].trim();
 
-        if (!isNaN(left) && !isNaN(right)) {
-            pairs.push([left, right]);
+            if (!isNaN(left) && !isNaN(right)) {
+                results.push({ left, right, name });
+            }
         }
     }
 
-    // Apply your rule:
-    const matches = pairs.filter(p => p[0] > 2 && p[1] < 2000);
+    // ---- YOUR FILTER RULE ----
+    const matches = results.filter(entry => entry.left >= 5 && entry.right < 1500);
 
     if (matches.length > 0) {
         console.log("MATCH FOUND:", matches);
 
-        // Send Pushover
-        await fetch("https://api.pushover.net/1/messages.json", {
-            method: "POST",
-            body: new URLSearchParams({
-                token: PUSHOVER_TOKEN,
-                user: PUSHOVER_USER,
-                message: `Nairi Match Found:\n${JSON.stringify(matches)}`
-            })
-        });
+        const body = matches
+            .map(m => `(${m.left} / ${m.right}) — ${m.name}`)
+            .join("\n");
+
+        // Send Pushover Notification
+        try {
+            await fetch("https://api.pushover.net/1/messages.json", {
+                method: "POST",
+                body: new URLSearchParams({
+                    token: PUSHOVER_TOKEN,
+                    user: PUSHOVER_USER,
+                    message: `Nairi Match Found:\n${body}`
+                })
+            });
+
+            console.log("Pushover Sent.");
+        } catch (err) {
+            console.error("❌ Pushover Error:", err);
+        }
     }
 });
 
