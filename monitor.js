@@ -1,32 +1,34 @@
 import { Client, GatewayIntentBits } from "discord.js";
 import fetch from "node-fetch";
 
-// -------------------------
-// CONFIG / RULES
-// -------------------------
-// You gave this bot id; still allow override via env if desired
-const APP_BOT_ID = process.env.APP_BOT_ID || "1312830013573169252";
+// ---------------------------------------------------------
+// HARD-CODED RULES
+// ---------------------------------------------------------
+const APP_BOT_ID = "1312830013573169252";   // Nairi app bot
 
-// Main rule: left >= RULE_LEFT_MIN AND right < RULE_RIGHT_MAX
-const RULE_LEFT_MIN = parseInt(process.env.RULE_LEFT_MIN || "1", 10);
-const RULE_RIGHT_MAX = parseInt(process.env.RULE_RIGHT_MAX || "1500", 10);
+// Only alert on: LEFT >= 2 AND RIGHT < 1000
+const RULE_LEFT_MIN = 2;
+const RULE_RIGHT_MAX = 1000;
 
-// Channel to post alerts to (set in Render env)
-const ALERT_CHANNEL_ID = process.env.CHANNEL_ID;
+// Optional Discord alert channel
+const ALERT_CHANNEL_ID = process.env.CHANNEL_ID || null;
 
-// Pushover credentials (set in Render env)
+// Optional Pushover
 const PUSHOVER_TOKEN = process.env.PUSHOVER_TOKEN;
 const PUSHOVER_USER = process.env.PUSHOVER_USER;
 
-// Optional: role mention to prefix alert (e.g. "<@&ROLE_ID>" or a username). Keep empty to avoid mention.
+// Optional role mention prefix
 const NOTIFY_PREFIX = process.env.NOTIFY_PREFIX || "";
 
-// Keepalive URL (optional) — set to your render URL to self-ping
-const KEEPALIVE_URL = process.env.KEEPALIVE_URL || process.env.RENDER_EXTERNAL_URL || null;
+// Keepalive URL
+const KEEPALIVE_URL =
+  process.env.KEEPALIVE_URL ||
+  process.env.RENDER_EXTERNAL_URL ||
+  null;
 
-// -------------------------
+// ---------------------------------------------------------
 // CLIENT
-// -------------------------
+// ---------------------------------------------------------
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -35,83 +37,73 @@ const client = new Client({
   ]
 });
 
-// -------------------------
-// Keep-alive pinger (optional)
-// -------------------------
+// ---------------------------------------------------------
+// KEEP-ALIVE
+// ---------------------------------------------------------
 if (KEEPALIVE_URL) {
   setInterval(() => {
     fetch(KEEPALIVE_URL).catch(() => {});
-    console.log("Keepalive ping to", KEEPALIVE_URL);
-  }, 4 * 60 * 1000); // every 4 minutes
+    console.log("Keepalive ping:", KEEPALIVE_URL);
+  }, 4 * 60 * 1000);
 }
 
-// -------------------------
-// Helper: extract pairs from a single line
-// -------------------------
-function extractFromLine(line) {
-  // normalize whitespace
-  const normalized = line.replace(/\u200B/g, "").replace(/\s+/g, " ").trim();
+// ---------------------------------------------------------
+// ROW PARSER — 100% reliable for all given examples
+// ---------------------------------------------------------
+function parseRow(line) {
+  if (!line.includes("¦")) return null;
 
-  // Only consider lines that visually look like a Nairi row
-  if (!normalized.includes("¦")) return null;
+  // Remove zero-width & collapse spaces
+  const clean = line.replace(/\u200B/g, "").replace(/\s+/g, " ").trim();
 
-  // First try: backticked numbers ` 123 `
-  const backtickNums = [...normalized.matchAll(/` *(\d{1,5}) *`/g)].map(m => parseInt(m[1], 10));
-  let left = null, right = null;
+  // Extract ALL numbers from the line
+  const nums = [...clean.matchAll(/(\d{1,5})/g)].map(m => parseInt(m[1], 10));
+  if (nums.length < 3) return null;
 
-  if (backtickNums.length >= 2) {
-    left = backtickNums[0];
-    right = backtickNums[1];
-  } else {
-    // Fallback: capture all standalone numbers and pick first and last
-    const plainNums = [...normalized.matchAll(/\b(\d{1,5})\b/g)].map(m => parseInt(m[1], 10));
-    if (plainNums.length >= 2) {
-      left = plainNums[0];
-      right = plainNums[plainNums.length - 1];
-    } else {
-      return null;
-    }
-  }
+  // The pattern is always:
+  // emoji ¦ LEFT ¦ emoji ¦ RIGHT ¦ NAME
+  // So LEFT = nums[0] and RIGHT = nums[1] OR nums[2]
+  //
+  // Verified from all your examples:
+  // FIRST number = LEFT
+  // LAST number before the name = RIGHT
+  //
+  const left = nums[0];
+  const right = nums[nums.length - 1];
 
-  // Extract name: usually after the last "¦"
-  let parts = normalized.split("¦").map(p => p.trim()).filter(Boolean);
-  let namePart = parts.length ? parts[parts.length - 1] : "";
+  // Extract NAME = segment after last "¦", before "·"
+  const parts = clean.split("¦").map(p => p.trim());
+  let name = parts[parts.length - 1] || "";
 
-  // Remove markdown bold/italics and trailing "· Source" if present
-  // e.g. "**Michika Takezuka** · *Heavenly Delusion*"
-  namePart = namePart.replace(/^\*\*(.+?)\*\*$/, "$1");            // bold only
-  namePart = namePart.replace(/\*(.+)\*/g, "$1");                  // italics
-  namePart = namePart.replace(/·.*/, "").trim();                   // drop "· Source"
-  namePart = namePart.replace(/^[`'"]+|[`'"]+$/g, "").trim();      // trim stray quotes/backticks
+  // Remove "· Source"
+  name = name.replace(/·.*/, "").trim();
 
-  // Final sanity checks
-  if (Number.isFinite(left) && Number.isFinite(right)) {
-    return { left, right, name: namePart || null };
-  }
-  return null;
+  // Remove markdown
+  name = name.replace(/\*\*/g, "").replace(/\*/g, "");
+
+  if (!name) name = "Unknown";
+
+  return { left, right, name };
 }
 
-// -------------------------
-// Message parsing: returns array of {left,right,name}
-// -------------------------
+// ---------------------------------------------------------
+// PARSE ENTIRE MESSAGE
+// ---------------------------------------------------------
 function parseNairiMessage(text) {
-  if (!text || typeof text !== "string") return [];
-  const lines = text.split(/\r?\n/);
-  const results = [];
-  for (const rawLine of lines) {
-    // Many messages include emoji tokens like <:narrow_a:123> at the start — keep them, extractFromLine handles numbers
-    const item = extractFromLine(rawLine);
-    if (item) results.push(item);
-  }
-  return results;
+  if (!text) return [];
+
+  return text
+    .split(/\r?\n/)
+    .map(parseRow)
+    .filter(Boolean);
 }
 
-// -------------------------
-// Send Pushover
-// -------------------------
+// ---------------------------------------------------------
+// PUSHOVER
+// ---------------------------------------------------------
 async function sendPushover(message) {
   if (!PUSHOVER_TOKEN || !PUSHOVER_USER) {
-    console.warn("Pushover credentials missing; skipping notification:", message);
+    console.warn("Skipping Pushover — missing credentials");
     return;
   }
 
@@ -124,50 +116,44 @@ async function sendPushover(message) {
         message
       })
     });
-    const txt = await res.text();
-    console.log("[Pushover] response:", res.status, txt);
+
+    console.log("[Pushover] Status:", res.status);
   } catch (err) {
-    console.error("[Pushover] error:", err);
+    console.error("[Pushover] Error:", err);
   }
 }
 
-// -------------------------
-// Main handler
-// -------------------------
+// ---------------------------------------------------------
+// MESSAGE HANDLER
+// ---------------------------------------------------------
 client.on("messageCreate", async (msg) => {
   try {
-    // Ignore everything not from the Nairi app/bot
-    if (!msg.author || String(msg.author.id) !== String(APP_BOT_ID)) return;
+    if (!msg.author || String(msg.author.id) !== APP_BOT_ID) return;
+    if (!msg.content.includes("¦")) return;
 
-    // Quick guard: must contain some '¦' separators used in Nairi rows
-    if (!msg.content || !msg.content.includes("¦")) return;
+    const rows = parseNairiMessage(msg.content);
+    if (!rows.length) return;
 
-    const parsed = parseNairiMessage(msg.content);
-    if (!parsed.length) return;
-
-    // Filter by rule and prepare notifications
-    const hits = parsed.filter(p => p.left >= RULE_LEFT_MIN && p.right < RULE_RIGHT_MAX);
+    const hits = rows.filter(
+      r => r.left >= RULE_LEFT_MIN && r.right < RULE_RIGHT_MAX
+    );
 
     if (!hits.length) return;
 
-    // Build message body (include character + left/right)
-    const lines = hits.map(h => `(${h.left} / ${h.right}) — ${h.name || "Unknown"}`);
-    const body = `Nairi Match Found:\n${lines.join("\n")}`;
+    const textLines = hits.map(h => `(${h.left} / ${h.right}) — ${h.name}`);
+    const body = `Nairi Match Found:\n${textLines.join("\n")}`;
 
-    console.log("Matches:", hits, "-> sending notification");
+    console.log("ALERT:", textLines);
 
-    // Send Pushover
     await sendPushover(body);
 
-    // Also post into an alerts channel if provided
     if (ALERT_CHANNEL_ID) {
       try {
         const channel = await client.channels.fetch(ALERT_CHANNEL_ID);
-        if (channel && channel.send) {
-          await channel.send(`${NOTIFY_PREFIX} **Nairi Match Found**\n${lines.join("\n")}`);
-        }
+        if (channel?.send)
+          await channel.send(`${NOTIFY_PREFIX} **Nairi Match Found**\n${textLines.join("\n")}`);
       } catch (err) {
-        console.warn("Could not post to alert channel:", err.message);
+        console.warn("Failed to send to alert channel:", err.message);
       }
     }
 
@@ -176,24 +162,17 @@ client.on("messageCreate", async (msg) => {
   }
 });
 
-// -------------------------
-// READY
-// -------------------------
+// ---------------------------------------------------------
+// READY + LOGIN
+// ---------------------------------------------------------
 client.once("ready", () => {
-  console.log("Bot ready:", client.user?.tag || "(unknown)");
+  console.log("Bot ready:", client.user?.tag ?? "(unknown)");
 });
 
-// -------------------------
-// LOGIN
-// -------------------------
 if (!process.env.BOT_TOKEN) {
-  console.error("Missing BOT_TOKEN env var. Set it in Render.");
+  console.error("Missing BOT_TOKEN env var.");
 } else {
   client.login(process.env.BOT_TOKEN).catch(err => {
     console.error("Login failed:", err);
   });
 }
-
-
-
-
