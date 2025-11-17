@@ -7,9 +7,9 @@ import fetch from "node-fetch";
 const APP_BOT_ID = "1312830013573169252";   // Nairi app bot
 
 // Alerts when:
-// LEFT >= 2  AND  RIGHT < 1500
-const RULE_LEFT_MIN = 2;
-const RULE_RIGHT_MAX = 1000;
+// LEFT >= 3  AND  RIGHT < 1200
+const RULE_LEFT_MIN = 3;
+const RULE_RIGHT_MAX = 1200;
 
 // Optional alert channel
 const ALERT_CHANNEL_ID = process.env.CHANNEL_ID || null;
@@ -161,3 +161,4 @@ if (!process.env.BOT_TOKEN) {
     console.error("Login failed:", err);
   });
 }
+
