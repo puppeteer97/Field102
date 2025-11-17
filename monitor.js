@@ -8,7 +8,7 @@ const APP_BOT_ID = "1312830013573169252";   // Nairi app bot
 
 // Only alert on: LEFT >= 3 AND RIGHT < 1000
 const RULE_LEFT_MIN = 2;
-const RULE_RIGHT_MAX = 1000;
+const RULE_RIGHT_MAX = 2500;
 
 // Optional Discord alert channel
 const ALERT_CHANNEL_ID = process.env.CHANNEL_ID || null;
@@ -155,3 +155,4 @@ if (!process.env.BOT_TOKEN) {
     console.error("Login failed:", err);
   });
 }
+
