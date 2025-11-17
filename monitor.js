@@ -6,10 +6,14 @@ import fetch from "node-fetch";
 // ---------------------------------------------------------
 const APP_BOT_ID = "1312830013573169252";   // Nairi app bot
 
-// Alerts when:
-// LEFT >= 3  AND  RIGHT < 1200
+// System A rules:
+// LEFT >= 3  AND  RIGHT < 1000
 const RULE_LEFT_MIN = 3;
-const RULE_RIGHT_MAX = 1200;
+const RULE_RIGHT_MAX = 1000;
+
+// System B new rule:
+// RIGHT < 100  (independent)
+const RULE_RIGHT_CRITICAL = 100;
 
 // Optional alert channel
 const ALERT_CHANNEL_ID = process.env.CHANNEL_ID || null;
@@ -18,10 +22,10 @@ const ALERT_CHANNEL_ID = process.env.CHANNEL_ID || null;
 const PUSHOVER_TOKEN = process.env.PUSHOVER_TOKEN;
 const PUSHOVER_USER = process.env.PUSHOVER_USER;
 
-// Optional mention prefix (e.g. <@&role>)
+// Optional mention prefix
 const NOTIFY_PREFIX = process.env.NOTIFY_PREFIX || "";
 
-// Keepalive URL (Render)
+// Keepalive URL
 const KEEPALIVE_URL =
   process.env.KEEPALIVE_URL ||
   process.env.RENDER_EXTERNAL_URL ||
@@ -39,7 +43,7 @@ const client = new Client({
 });
 
 // ---------------------------------------------------------
-// KEEP-ALIVE PINGER
+// KEEP-ALIVE
 // ---------------------------------------------------------
 if (KEEPALIVE_URL) {
   setInterval(() => {
@@ -103,42 +107,72 @@ async function sendPushover(message) {
 // ---------------------------------------------------------
 client.on("messageCreate", async (msg) => {
   try {
-    // must be from Nairi app
     if (!msg.author || String(msg.author.id) !== APP_BOT_ID) return;
-
-    // must contain row separator
     if (!msg.content.includes("¦")) return;
 
     const rows = parseNairiMessage(msg.content);
     if (!rows.length) return;
 
-    // Apply rules
-    const hits = rows.filter(
+    // -------------------------------
+    // SYSTEM A: (existing rule)
+    // LEFT >= 3 AND RIGHT < 1200
+    // -------------------------------
+    const ruleA_hits = rows.filter(
       r => r.left >= RULE_LEFT_MIN && r.right < RULE_RIGHT_MAX
     );
 
-    if (!hits.length) return;
+    // -------------------------------
+    // SYSTEM B: (new rule)
+    // RIGHT < 100, ANY LEFT
+    // -------------------------------
+    const ruleB_hits = rows.filter(
+      r => r.right < RULE_RIGHT_CRITICAL
+    );
 
-    // Build lines like "(11 / 558)"
-    const lines = hits.map(h => `(${h.left} / ${h.right})`);
-    const body = `Nairi Match Found:\n${lines.join("\n")}`;
+    // If no triggers, stop
+    if (!ruleA_hits.length && !ruleB_hits.length) return;
 
-    console.log("ALERT TRIGGERED:", lines);
+    // Handle Rule A
+    if (ruleA_hits.length) {
+      const lines = ruleA_hits.map(h => `(${h.left} / ${h.right})`);
+      const body = `Nairi Match Found (Standard Rule):\n${lines.join("\n")}`;
 
-    // Send to pushover
-    await sendPushover(body);
+      console.log("ALERT A:", lines);
+      await sendPushover(body);
 
-    // Send to Discord alert channel
-    if (ALERT_CHANNEL_ID) {
-      try {
-        const channel = await client.channels.fetch(ALERT_CHANNEL_ID);
-        if (channel?.send) {
-          await channel.send(
-            `${NOTIFY_PREFIX} **Nairi Match Found**\n${lines.join("\n")}`
-          );
+      if (ALERT_CHANNEL_ID) {
+        try {
+          const channel = await client.channels.fetch(ALERT_CHANNEL_ID);
+          if (channel?.send) {
+            await channel.send(
+              `${NOTIFY_PREFIX} **Nairi Match Found (Standard Rule)**\n${lines.join("\n")}`
+            );
+          }
+        } catch (err) {
+          console.warn("Failed sending Rule A:", err.message);
         }
-      } catch (err) {
-        console.warn("Failed to send to alert channel:", err.message);
+      }
+    }
+
+    // Handle Rule B
+    if (ruleB_hits.length) {
+      const lines2 = ruleB_hits.map(h => `(${h.left} / ${h.right})`);
+      const body2 = `⚠️ CRITICAL ALERT — Right < ${RULE_RIGHT_CRITICAL}:\n${lines2.join("\n")}`;
+
+      console.log("ALERT B:", lines2);
+      await sendPushover(body2);
+
+      if (ALERT_CHANNEL_ID) {
+        try {
+          const channel = await client.channels.fetch(ALERT_CHANNEL_ID);
+          if (channel?.send) {
+            await channel.send(
+              `${NOTIFY_PREFIX} **⚠️ CRITICAL MATCH — Right < ${RULE_RIGHT_CRITICAL}**\n${lines2.join("\n")}`
+            );
+          }
+        } catch (err) {
+          console.warn("Failed sending Rule B:", err.message);
+        }
       }
     }
 
@@ -161,4 +195,3 @@ if (!process.env.BOT_TOKEN) {
     console.error("Login failed:", err);
   });
 }
-
