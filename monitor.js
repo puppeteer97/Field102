@@ -6,21 +6,22 @@ import fetch from "node-fetch";
 // ---------------------------------------------------------
 const APP_BOT_ID = "1312830013573169252";   // Nairi app bot
 
-// Only alert on: LEFT >= 3 AND RIGHT < 1000
+// Alerts when:
+// LEFT >= 2  AND  RIGHT < 1500
 const RULE_LEFT_MIN = 2;
-const RULE_RIGHT_MAX = 2500;
+const RULE_RIGHT_MAX = 1000;
 
-// Optional Discord alert channel
+// Optional alert channel
 const ALERT_CHANNEL_ID = process.env.CHANNEL_ID || null;
 
 // Optional Pushover
 const PUSHOVER_TOKEN = process.env.PUSHOVER_TOKEN;
 const PUSHOVER_USER = process.env.PUSHOVER_USER;
 
-// Optional role mention prefix
+// Optional mention prefix (e.g. <@&role>)
 const NOTIFY_PREFIX = process.env.NOTIFY_PREFIX || "";
 
-// Keepalive URL
+// Keepalive URL (Render)
 const KEEPALIVE_URL =
   process.env.KEEPALIVE_URL ||
   process.env.RENDER_EXTERNAL_URL ||
@@ -38,7 +39,7 @@ const client = new Client({
 });
 
 // ---------------------------------------------------------
-// KEEP-ALIVE
+// KEEP-ALIVE PINGER
 // ---------------------------------------------------------
 if (KEEPALIVE_URL) {
   setInterval(() => {
@@ -48,25 +49,20 @@ if (KEEPALIVE_URL) {
 }
 
 // ---------------------------------------------------------
-// PAIR PARSER — bullet-proof version
+// PERFECT BACKTICK PARSER
+// Always scans ONLY:  ` 123`
 // ---------------------------------------------------------
-function extractPair(line) {
+function parseRow(line) {
   if (!line.includes("¦")) return null;
 
-  const clean = line
-    .replace(/\u200B/g, "")      // remove zero-width chars
-    .replace(/\s+/g, " ")        // collapse spaces
-    .trim();
+  // Extract numbers inside backticks:  ` 558`
+  const numMatches = [...line.matchAll(/` *(\d{1,5}) *`/g)];
+  if (numMatches.length < 2) return null;
 
-  // Extract ALL numbers in the order they appear
-  const nums = [...clean.matchAll(/(\d{1,5})/g)].map(m => parseInt(m[1], 10));
+  const left = parseInt(numMatches[0][1], 10);
+  const right = parseInt(numMatches[1][1], 10);
 
-  if (nums.length < 2) return null;
-
-  return {
-    left: nums[0],                      // FIRST number
-    right: nums[nums.length - 1]        // LAST number before name
-  };
+  return { left, right };
 }
 
 // ---------------------------------------------------------
@@ -74,17 +70,17 @@ function extractPair(line) {
 // ---------------------------------------------------------
 function parseNairiMessage(text) {
   if (!text) return [];
-  return text
-    .split(/\r?\n/)
-    .map(extractPair)
-    .filter(Boolean);
+  return text.split(/\r?\n/).map(parseRow).filter(Boolean);
 }
 
 // ---------------------------------------------------------
 // PUSHOVER
 // ---------------------------------------------------------
 async function sendPushover(message) {
-  if (!PUSHOVER_TOKEN || !PUSHOVER_USER) return;
+  if (!PUSHOVER_TOKEN || !PUSHOVER_USER) {
+    console.warn("Skipping Pushover — missing credentials");
+    return;
+  }
 
   try {
     const res = await fetch("https://api.pushover.net/1/messages.json", {
@@ -107,30 +103,40 @@ async function sendPushover(message) {
 // ---------------------------------------------------------
 client.on("messageCreate", async (msg) => {
   try {
+    // must be from Nairi app
     if (!msg.author || String(msg.author.id) !== APP_BOT_ID) return;
+
+    // must contain row separator
     if (!msg.content.includes("¦")) return;
 
-    const pairs = parseNairiMessage(msg.content);
-    if (!pairs.length) return;
+    const rows = parseNairiMessage(msg.content);
+    if (!rows.length) return;
 
-    const hits = pairs.filter(
-      p => p.left >= RULE_LEFT_MIN && p.right < RULE_RIGHT_MAX
+    // Apply rules
+    const hits = rows.filter(
+      r => r.left >= RULE_LEFT_MIN && r.right < RULE_RIGHT_MAX
     );
 
     if (!hits.length) return;
 
-    const textLines = hits.map(h => `(${h.left} / ${h.right})`);
-    const body = `Nairi Match Found:\n${textLines.join("\n")}`;
+    // Build lines like "(11 / 558)"
+    const lines = hits.map(h => `(${h.left} / ${h.right})`);
+    const body = `Nairi Match Found:\n${lines.join("\n")}`;
 
-    console.log("ALERT:", textLines);
+    console.log("ALERT TRIGGERED:", lines);
 
+    // Send to pushover
     await sendPushover(body);
 
+    // Send to Discord alert channel
     if (ALERT_CHANNEL_ID) {
       try {
         const channel = await client.channels.fetch(ALERT_CHANNEL_ID);
-        if (channel?.send)
-          await channel.send(`${NOTIFY_PREFIX} **Nairi Match Found**\n${textLines.join("\n")}`);
+        if (channel?.send) {
+          await channel.send(
+            `${NOTIFY_PREFIX} **Nairi Match Found**\n${lines.join("\n")}`
+          );
+        }
       } catch (err) {
         console.warn("Failed to send to alert channel:", err.message);
       }
@@ -149,10 +155,9 @@ client.once("ready", () => {
 });
 
 if (!process.env.BOT_TOKEN) {
-  console.error("Missing BOT_TOKEN env var.");
+  console.error("Missing BOT_TOKEN environment variable.");
 } else {
   client.login(process.env.BOT_TOKEN).catch(err => {
     console.error("Login failed:", err);
   });
 }
-
