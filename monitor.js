@@ -10,7 +10,7 @@ import fetch from "node-fetch";
 const APP_BOT_ID = "1312830013573169252";
 
 // Alert A
-const RULE_LEFT_MIN = 7;
+const RULE_LEFT_MIN = 5;
 const RULE_RIGHT_MAX = 1000;
 
 // Alert B
@@ -193,3 +193,4 @@ client.on("messageCreate", async (msg) => {
     console.error("LOGIN FAILED:", err);
   }
 })();
+
