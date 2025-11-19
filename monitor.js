@@ -9,7 +9,7 @@ import fetch from "node-fetch";
 //---------------------------------------------------------
 const APP_BOT_ID = "1312830013573169252";
 
-// NEW ALERT RULES (updated as you requested)
+// NEW ALERT RULES
 const ALERT_A_LEFT_MIN = 5;
 const ALERT_A_RIGHT_MAX = 500;
 
@@ -54,18 +54,22 @@ if (KEEPALIVE_URL) {
 }
 
 //---------------------------------------------------------
-// PARSER
+// PARSER (UPDATED TO HANDLE EMOJIS + MULTIPLE FIELDS)
 //---------------------------------------------------------
 function parseRow(line) {
   if (!line.includes("¦")) return null;
 
+  // Extract ALL numbers inside backticks, regardless of spacing or emojis
   const matches = [...line.matchAll(/` *(\d{1,5}) *`/g)];
+
   if (matches.length < 2) return null;
 
-  return {
-    left: parseInt(matches[0][1], 10),
-    right: parseInt(matches[1][1], 10)
-  };
+  // LEFT = first number
+  // RIGHT = last number (before name field)
+  const left = parseInt(matches[0][1], 10);
+  const right = parseInt(matches[matches.length - 1][1], 10);
+
+  return { left, right };
 }
 
 function parseNairiMessage(text) {
@@ -91,114 +95,4 @@ async function sendPushover(msg) {
     });
     console.log("[Pushover] Status:", r.status);
   } catch (err) {
-    console.log("[Pushover ERROR]", err);
-  }
-}
-
-//---------------------------------------------------------
-// DISCORD SHARD EVENTS
-//---------------------------------------------------------
-client.on("ready", () => {
-  console.log("Bot ready:", client.user?.tag);
-});
-
-client.on("shardDisconnect", (event, shardID) => {
-  console.log("⚠️ SHARD DISCONNECTED:", shardID, event.code, event.reason);
-});
-
-client.on("shardReconnecting", (id) => {
-  console.log("♻️ Reconnecting shard:", id);
-});
-
-client.on("shardResume", (id) => {
-  console.log("🔗 Shard resumed:", id);
-});
-
-//---------------------------------------------------------
-// MAIN MESSAGE HANDLER
-//---------------------------------------------------------
-client.on("messageCreate", async (msg) => {
-  try {
-    if (!msg.author || msg.author.id !== APP_BOT_ID) return;
-    if (!msg.content.includes("¦")) return;
-
-    const rows = parseNairiMessage(msg.content);
-    if (!rows.length) return;
-
-    //-----------------------------------------------------
-    // ALERTS (UPDATED RULES)
-    //-----------------------------------------------------
-
-    const hitsA = rows.filter(
-      r => r.left >= ALERT_A_LEFT_MIN && r.right < ALERT_A_RIGHT_MAX
-    );
-
-    const hitsB = rows.filter(
-      r => r.left >= ALERT_B_LEFT_MIN && r.right < ALERT_B_RIGHT_MAX
-    );
-
-    const hitsC = rows.filter(
-      r => r.right < ALERT_C_RIGHT_MAX // ignore left completely
-    );
-
-    // Logging
-    if (hitsA.length)
-      console.log("ALERT A:", hitsA.map(h => `(${h.left} / ${h.right})`));
-
-    if (hitsB.length)
-      console.log("ALERT B:", hitsB.map(h => `(${h.left} / ${h.right})`));
-
-    if (hitsC.length)
-      console.log("ALERT C:", hitsC.map(h => `(${h.left} / ${h.right})`));
-
-    if (!hitsA.length && !hitsB.length && !hitsC.length) return;
-
-    const packA = hitsA.map(h => `(${h.left} / ${h.right})`);
-    const packB = hitsB.map(h => `(${h.left} / ${h.right})`);
-    const packC = hitsC.map(h => `(${h.left} / ${h.right})`);
-
-    //-----------------------------------------------------
-    // PUSHOVER NOTIFICATIONS
-    //-----------------------------------------------------
-    if (hitsA.length)
-      await sendPushover("Alert A — left>=5 & right<500:\n" + packA.join("\n"));
-
-    if (hitsB.length)
-      await sendPushover("Alert B — left>=15 & right<1000:\n" + packB.join("\n"));
-
-    if (hitsC.length)
-      await sendPushover("Alert C — right<100:\n" + packC.join("\n"));
-
-    //-----------------------------------------------------
-    // DISCORD NOTIFICATIONS
-    //-----------------------------------------------------
-    if (ALERT_CHANNEL_ID) {
-      const ch = await client.channels.fetch(ALERT_CHANNEL_ID).catch(() => {});
-
-      if (ch?.send) {
-        if (hitsA.length)
-          ch.send(`${NOTIFY_PREFIX} **Alert A — left>=5 & right<500**\n${packA.join("\n")}`);
-
-        if (hitsB.length)
-          ch.send(`${NOTIFY_PREFIX} **Alert B — left>=15 & right<1000**\n${packB.join("\n")}`);
-
-        if (hitsC.length)
-          ch.send(`${NOTIFY_PREFIX} **Alert C — right<100**\n${packC.join("\n")}`);
-      }
-    }
-
-  } catch (err) {
-    console.log("Handler error:", err);
-  }
-});
-
-//---------------------------------------------------------
-// LOGIN
-//---------------------------------------------------------
-(async () => {
-  try {
-    await client.login(process.env.BOT_TOKEN);
-  } catch (err) {
-    console.error("LOGIN FAILED:", err);
-  }
-})();
+    console.log("
