@@ -1,198 +1,195 @@
+//---------------------------------------------------------
+// DEPENDENCIES
+//---------------------------------------------------------
 import { Client, GatewayIntentBits } from "discord.js";
 import fetch from "node-fetch";
 
-// ---------------------------------------------------------
-// HARD-CODED RULES
-// ---------------------------------------------------------
-const APP_BOT_ID = "1312830013573169252";   // Nairi app bot
+//---------------------------------------------------------
+// HARD SETTINGS
+//---------------------------------------------------------
+const APP_BOT_ID = "1312830013573169252";
 
-// System A rules:
-// LEFT >= 7  AND  RIGHT < 1000
+// Alert A
 const RULE_LEFT_MIN = 7;
 const RULE_RIGHT_MAX = 1000;
 
-// System B new rule:
-// RIGHT < 100  (independent)
+// Alert B
 const RULE_RIGHT_CRITICAL = 100;
 
-// Optional alert channel
+// Alert C (NEW)
+const RULE_LEFT_CRITICAL = 50;
+
 const ALERT_CHANNEL_ID = process.env.CHANNEL_ID || null;
 
-// Optional Pushover
 const PUSHOVER_TOKEN = process.env.PUSHOVER_TOKEN;
 const PUSHOVER_USER = process.env.PUSHOVER_USER;
 
-// Optional mention prefix
 const NOTIFY_PREFIX = process.env.NOTIFY_PREFIX || "";
 
-// Keepalive URL
 const KEEPALIVE_URL =
   process.env.KEEPALIVE_URL ||
   process.env.RENDER_EXTERNAL_URL ||
   null;
 
-// ---------------------------------------------------------
-// CLIENT
-// ---------------------------------------------------------
+//---------------------------------------------------------
+// DISCORD CLIENT (AUTO-RECONNECT SAFE)
+//---------------------------------------------------------
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent
-  ]
+  ],
+  closeTimeout: 5000,
+  sweepers: { messages: { interval: 300, lifetime: 900 } }
 });
 
-// ---------------------------------------------------------
-// KEEP-ALIVE
-// ---------------------------------------------------------
+//---------------------------------------------------------
+// KEEPALIVE
+//---------------------------------------------------------
 if (KEEPALIVE_URL) {
   setInterval(() => {
     fetch(KEEPALIVE_URL).catch(() => {});
     console.log("Keepalive ping:", KEEPALIVE_URL);
-  }, 4 * 60 * 1000);
+  }, 240000);
 }
 
-// ---------------------------------------------------------
-// PERFECT BACKTICK PARSER
-// Always scans ONLY:  ` 123`
-// ---------------------------------------------------------
+//---------------------------------------------------------
+// PARSER
+//---------------------------------------------------------
 function parseRow(line) {
   if (!line.includes("¦")) return null;
 
-  // Extract numbers inside backticks:  ` 558`
-  const numMatches = [...line.matchAll(/` *(\d{1,5}) *`/g)];
-  if (numMatches.length < 2) return null;
+  const matches = [...line.matchAll(/` *(\d{1,5}) *`/g)];
+  if (matches.length < 2) return null;
 
-  const left = parseInt(numMatches[0][1], 10);
-  const right = parseInt(numMatches[1][1], 10);
-
-  return { left, right };
+  return {
+    left: parseInt(matches[0][1], 10),
+    right: parseInt(matches[1][1], 10)
+  };
 }
 
-// ---------------------------------------------------------
-// PARSE ENTIRE MESSAGE
-// ---------------------------------------------------------
 function parseNairiMessage(text) {
-  if (!text) return [];
-  return text.split(/\r?\n/).map(parseRow).filter(Boolean);
+  return text
+    .split(/\r?\n/)
+    .map(parseRow)
+    .filter(Boolean);
 }
 
-// ---------------------------------------------------------
+//---------------------------------------------------------
 // PUSHOVER
-// ---------------------------------------------------------
-async function sendPushover(message) {
-  if (!PUSHOVER_TOKEN || !PUSHOVER_USER) {
-    console.warn("Skipping Pushover — missing credentials");
-    return;
-  }
-
+//---------------------------------------------------------
+async function sendPushover(msg) {
+  if (!PUSHOVER_TOKEN || !PUSHOVER_USER) return;
   try {
-    const res = await fetch("https://api.pushover.net/1/messages.json", {
+    const r = await fetch("https://api.pushover.net/1/messages.json", {
       method: "POST",
       body: new URLSearchParams({
         token: PUSHOVER_TOKEN,
         user: PUSHOVER_USER,
-        message
+        message: msg
       })
     });
-
-    console.log("[Pushover] Status:", res.status);
+    console.log("[Pushover] Status:", r.status);
   } catch (err) {
-    console.error("[Pushover] Error:", err);
+    console.log("[Pushover ERROR]", err);
   }
 }
 
-// ---------------------------------------------------------
-// MESSAGE HANDLER
-// ---------------------------------------------------------
+//---------------------------------------------------------
+// DISCORD SHARD EVENTS
+//---------------------------------------------------------
+client.on("ready", () => {
+  console.log("Bot ready:", client.user?.tag);
+});
+
+client.on("shardDisconnect", (event, shardID) => {
+  console.log("⚠️ SHARD DISCONNECTED:", shardID, event.code, event.reason);
+});
+
+client.on("shardReconnecting", (id) => {
+  console.log("♻️ Reconnecting shard:", id);
+});
+
+client.on("shardResume", (id) => {
+  console.log("🔗 Shard resumed:", id);
+});
+
+//---------------------------------------------------------
+// MAIN MESSAGE HANDLER
+//---------------------------------------------------------
 client.on("messageCreate", async (msg) => {
   try {
-    if (!msg.author || String(msg.author.id) !== APP_BOT_ID) return;
+    if (!msg.author || msg.author.id !== APP_BOT_ID) return;
     if (!msg.content.includes("¦")) return;
 
     const rows = parseNairiMessage(msg.content);
     if (!rows.length) return;
 
-    // -------------------------------
-    // SYSTEM A: (existing rule)
-    // LEFT >= 3 AND RIGHT < 1200
-    // -------------------------------
-    const ruleA_hits = rows.filter(
+    // Alerts
+    const hitsA = rows.filter(
       r => r.left >= RULE_LEFT_MIN && r.right < RULE_RIGHT_MAX
     );
 
-    // -------------------------------
-    // SYSTEM B: (new rule)
-    // RIGHT < 100, ANY LEFT
-    // -------------------------------
-    const ruleB_hits = rows.filter(
+    const hitsB = rows.filter(
       r => r.right < RULE_RIGHT_CRITICAL
     );
 
-    // If no triggers, stop
-    if (!ruleA_hits.length && !ruleB_hits.length) return;
+    const hitsC = rows.filter(
+      r => r.left > RULE_LEFT_CRITICAL
+    );
 
-    // Handle Rule A
-    if (ruleA_hits.length) {
-      const lines = ruleA_hits.map(h => `(${h.left} / ${h.right})`);
-      const body = `Nairi Match Found (Standard Rule):\n${lines.join("\n")}`;
+    if (hitsA.length)
+      console.log("ALERT A:", hitsA.map(h => `(${h.left} / ${h.right})`));
 
-      console.log("ALERT A:", lines);
-      await sendPushover(body);
+    if (hitsB.length)
+      console.log("ALERT B:", hitsB.map(h => `(${h.left} / ${h.right})`));
 
-      if (ALERT_CHANNEL_ID) {
-        try {
-          const channel = await client.channels.fetch(ALERT_CHANNEL_ID);
-          if (channel?.send) {
-            await channel.send(
-              `${NOTIFY_PREFIX} **Nairi Match Found (Standard Rule)**\n${lines.join("\n")}`
-            );
-          }
-        } catch (err) {
-          console.warn("Failed sending Rule A:", err.message);
-        }
-      }
-    }
+    if (hitsC.length)
+      console.log("ALERT C (LEFT > 50):", hitsC.map(h => `(${h.left} / ${h.right})`));
 
-    // Handle Rule B
-    if (ruleB_hits.length) {
-      const lines2 = ruleB_hits.map(h => `(${h.left} / ${h.right})`);
-      const body2 = `⚠️ CRITICAL ALERT — Right < ${RULE_RIGHT_CRITICAL}:\n${lines2.join("\n")}`;
+    if (!hitsA.length && !hitsB.length && !hitsC.length) return;
 
-      console.log("ALERT B:", lines2);
-      await sendPushover(body2);
+    const packA = hitsA.map(h => `(${h.left} / ${h.right})`);
+    const packB = hitsB.map(h => `(${h.left} / ${h.right})`);
+    const packC = hitsC.map(h => `(${h.left} / ${h.right})`);
 
-      if (ALERT_CHANNEL_ID) {
-        try {
-          const channel = await client.channels.fetch(ALERT_CHANNEL_ID);
-          if (channel?.send) {
-            await channel.send(
-              `${NOTIFY_PREFIX} **⚠️ CRITICAL MATCH — Right < ${RULE_RIGHT_CRITICAL}**\n${lines2.join("\n")}`
-            );
-          }
-        } catch (err) {
-          console.warn("Failed sending Rule B:", err.message);
-        }
+    if (hitsA.length)
+      await sendPushover("Alert A:\n" + packA.join("\n"));
+
+    if (hitsB.length)
+      await sendPushover("Alert B (RIGHT < 100):\n" + packB.join("\n"));
+
+    if (hitsC.length)
+      await sendPushover("Alert C (LEFT > 50):\n" + packC.join("\n"));
+
+    if (ALERT_CHANNEL_ID) {
+      const ch = await client.channels.fetch(ALERT_CHANNEL_ID).catch(() => {});
+
+      if (ch?.send) {
+        if (hitsA.length)
+          ch.send(`${NOTIFY_PREFIX} **Alert A**\n${packA.join("\n")}`);
+
+        if (hitsB.length)
+          ch.send(`${NOTIFY_PREFIX} **Alert B — RIGHT < 100**\n${packB.join("\n")}`);
+
+        if (hitsC.length)
+          ch.send(`${NOTIFY_PREFIX} **Alert C — LEFT > 50**\n${packC.join("\n")}`);
       }
     }
 
   } catch (err) {
-    console.error("Handler error:", err);
+    console.log("Handler error:", err);
   }
 });
 
-// ---------------------------------------------------------
-// READY + LOGIN
-// ---------------------------------------------------------
-client.once("ready", () => {
-  console.log("Bot ready:", client.user?.tag ?? "(unknown)");
-});
-
-if (!process.env.BOT_TOKEN) {
-  console.error("Missing BOT_TOKEN environment variable.");
-} else {
-  client.login(process.env.BOT_TOKEN).catch(err => {
-    console.error("Login failed:", err);
-  });
-}
-
+//---------------------------------------------------------
+// LOGIN
+//---------------------------------------------------------
+(async () => {
+  try {
+    await client.login(process.env.BOT_TOKEN);
+  } catch (err) {
+    console.error("LOGIN FAILED:", err);
+  }
+})();
