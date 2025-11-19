@@ -7,8 +7,8 @@ import fetch from "node-fetch";
 const APP_BOT_ID = "1312830013573169252";   // Nairi app bot
 
 // System A rules:
-// LEFT >= 3  AND  RIGHT < 1000
-const RULE_LEFT_MIN = 3;
+// LEFT >= 7  AND  RIGHT < 1000
+const RULE_LEFT_MIN = 7;
 const RULE_RIGHT_MAX = 1000;
 
 // System B new rule:
@@ -195,3 +195,4 @@ if (!process.env.BOT_TOKEN) {
     console.error("Login failed:", err);
   });
 }
+
