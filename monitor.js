@@ -9,15 +9,14 @@ import fetch from "node-fetch";
 //---------------------------------------------------------
 const APP_BOT_ID = "1312830013573169252";
 
-// Alert A
-const RULE_LEFT_MIN = 5;
-const RULE_RIGHT_MAX = 1000;
+// NEW ALERT RULES (updated as you requested)
+const ALERT_A_LEFT_MIN = 5;
+const ALERT_A_RIGHT_MAX = 500;
 
-// Alert B
-const RULE_RIGHT_CRITICAL = 100;
+const ALERT_B_LEFT_MIN = 15;
+const ALERT_B_RIGHT_MAX = 1000;
 
-// Alert C (NEW)
-const RULE_LEFT_CRITICAL = 50;
+const ALERT_C_RIGHT_MAX = 100; // irrespective of left
 
 const ALERT_CHANNEL_ID = process.env.CHANNEL_ID || null;
 
@@ -126,19 +125,23 @@ client.on("messageCreate", async (msg) => {
     const rows = parseNairiMessage(msg.content);
     if (!rows.length) return;
 
-    // Alerts
+    //-----------------------------------------------------
+    // ALERTS (UPDATED RULES)
+    //-----------------------------------------------------
+
     const hitsA = rows.filter(
-      r => r.left >= RULE_LEFT_MIN && r.right < RULE_RIGHT_MAX
+      r => r.left >= ALERT_A_LEFT_MIN && r.right < ALERT_A_RIGHT_MAX
     );
 
     const hitsB = rows.filter(
-      r => r.right < RULE_RIGHT_CRITICAL
+      r => r.left >= ALERT_B_LEFT_MIN && r.right < ALERT_B_RIGHT_MAX
     );
 
     const hitsC = rows.filter(
-      r => r.left > RULE_LEFT_CRITICAL
+      r => r.right < ALERT_C_RIGHT_MAX // ignore left completely
     );
 
+    // Logging
     if (hitsA.length)
       console.log("ALERT A:", hitsA.map(h => `(${h.left} / ${h.right})`));
 
@@ -146,7 +149,7 @@ client.on("messageCreate", async (msg) => {
       console.log("ALERT B:", hitsB.map(h => `(${h.left} / ${h.right})`));
 
     if (hitsC.length)
-      console.log("ALERT C (LEFT > 50):", hitsC.map(h => `(${h.left} / ${h.right})`));
+      console.log("ALERT C:", hitsC.map(h => `(${h.left} / ${h.right})`));
 
     if (!hitsA.length && !hitsB.length && !hitsC.length) return;
 
@@ -154,27 +157,33 @@ client.on("messageCreate", async (msg) => {
     const packB = hitsB.map(h => `(${h.left} / ${h.right})`);
     const packC = hitsC.map(h => `(${h.left} / ${h.right})`);
 
+    //-----------------------------------------------------
+    // PUSHOVER NOTIFICATIONS
+    //-----------------------------------------------------
     if (hitsA.length)
-      await sendPushover("Alert A:\n" + packA.join("\n"));
+      await sendPushover("Alert A — left>=5 & right<500:\n" + packA.join("\n"));
 
     if (hitsB.length)
-      await sendPushover("Alert B (RIGHT < 100):\n" + packB.join("\n"));
+      await sendPushover("Alert B — left>=15 & right<1000:\n" + packB.join("\n"));
 
     if (hitsC.length)
-      await sendPushover("Alert C (LEFT > 50):\n" + packC.join("\n"));
+      await sendPushover("Alert C — right<100:\n" + packC.join("\n"));
 
+    //-----------------------------------------------------
+    // DISCORD NOTIFICATIONS
+    //-----------------------------------------------------
     if (ALERT_CHANNEL_ID) {
       const ch = await client.channels.fetch(ALERT_CHANNEL_ID).catch(() => {});
 
       if (ch?.send) {
         if (hitsA.length)
-          ch.send(`${NOTIFY_PREFIX} **Alert A**\n${packA.join("\n")}`);
+          ch.send(`${NOTIFY_PREFIX} **Alert A — left>=5 & right<500**\n${packA.join("\n")}`);
 
         if (hitsB.length)
-          ch.send(`${NOTIFY_PREFIX} **Alert B — RIGHT < 100**\n${packB.join("\n")}`);
+          ch.send(`${NOTIFY_PREFIX} **Alert B — left>=15 & right<1000**\n${packB.join("\n")}`);
 
         if (hitsC.length)
-          ch.send(`${NOTIFY_PREFIX} **Alert C — LEFT > 50**\n${packC.join("\n")}`);
+          ch.send(`${NOTIFY_PREFIX} **Alert C — right<100**\n${packC.join("\n")}`);
       }
     }
 
@@ -193,4 +202,3 @@ client.on("messageCreate", async (msg) => {
     console.error("LOGIN FAILED:", err);
   }
 })();
-
