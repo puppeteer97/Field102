@@ -11,10 +11,10 @@ const APP_BOT_ID = "1312830013573169252";
 
 // NEW ALERT RULES
 const ALERT_A_LEFT_MIN = 10;
-const ALERT_A_RIGHT_MAX = 500;
+const ALERT_A_RIGHT_MAX = 300;
 
 const ALERT_B_LEFT_MIN = 20;
-const ALERT_B_RIGHT_MAX = 1000;
+const ALERT_B_RIGHT_MAX = 600;
 
 const ALERT_C_RIGHT_MAX = 100; // irrespective of left
 
