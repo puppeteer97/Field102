@@ -10,10 +10,10 @@ import fetch from "node-fetch";
 const APP_BOT_ID = "1312830013573169252";
 
 // NEW ALERT RULES
-const ALERT_A_LEFT_MIN = 5;
+const ALERT_A_LEFT_MIN = 10;
 const ALERT_A_RIGHT_MAX = 500;
 
-const ALERT_B_LEFT_MIN = 15;
+const ALERT_B_LEFT_MIN = 20;
 const ALERT_B_RIGHT_MAX = 1000;
 
 const ALERT_C_RIGHT_MAX = 100; // irrespective of left
@@ -206,3 +206,4 @@ client.on("messageCreate", async (msg) => {
     console.error("LOGIN FAILED:", err);
   }
 })();
+
