@@ -181,10 +181,10 @@ client.on("messageCreate", async (msg) => {
 
       if (ch?.send) {
         if (hitsA.length)
-          ch.send(`${NOTIFY_PREFIX} **Alert A — left>=5 & right<500**\n${packA.join("\n")}`);
+          ch.send(`${NOTIFY_PREFIX} **Alert A — left>=10 & right<300**\n${packA.join("\n")}`);
 
         if (hitsB.length)
-          ch.send(`${NOTIFY_PREFIX} **Alert B — left>=15 & right<1000**\n${packB.join("\n")}`);
+          ch.send(`${NOTIFY_PREFIX} **Alert B — left>=20 & right<600**\n${packB.join("\n")}`);
 
         if (hitsC.length)
           ch.send(`${NOTIFY_PREFIX} **Alert C — right<100**\n${packC.join("\n")}`);
@@ -206,4 +206,5 @@ client.on("messageCreate", async (msg) => {
     console.error("LOGIN FAILED:", err);
   }
 })();
+
 
