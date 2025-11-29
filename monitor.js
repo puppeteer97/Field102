@@ -11,10 +11,10 @@ const APP_BOT_ID = "1312830013573169252";
 
 // NEW ALERT RULES
 const ALERT_A_LEFT_MIN = 10;
-const ALERT_A_RIGHT_MAX = 300;
+const ALERT_A_RIGHT_MAX = 200;
 
 const ALERT_B_LEFT_MIN = 20;
-const ALERT_B_RIGHT_MAX = 600;
+const ALERT_B_RIGHT_MAX = 400;
 
 const ALERT_C_RIGHT_MAX = 100; // irrespective of left
 
@@ -165,10 +165,10 @@ client.on("messageCreate", async (msg) => {
     // PUSHOVER NOTIFICATIONS
     //-----------------------------------------------------
     if (hitsA.length)
-      await sendPushover("Alert A — left>=5 & right<500:\n" + packA.join("\n"));
+      await sendPushover("Alert A — left>=10 & right<200:\n" + packA.join("\n"));
 
     if (hitsB.length)
-      await sendPushover("Alert B — left>=15 & right<1000:\n" + packB.join("\n"));
+      await sendPushover("Alert B — left>=20 & right<400:\n" + packB.join("\n"));
 
     if (hitsC.length)
       await sendPushover("Alert C — right<100:\n" + packC.join("\n"));
