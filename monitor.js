@@ -16,7 +16,7 @@ const ALERT_A_RIGHT_MAX = 400;
 const ALERT_B_LEFT_MIN = 30;
 const ALERT_B_RIGHT_MAX = 600;
 
-const ALERT_C_RIGHT_MAX = 100; // irrespective of left
+const ALERT_C_RIGHT_MAX = 100; // irrespective of left (your override modifies this logic)
 
 const ALERT_CHANNEL_ID = process.env.CHANNEL_ID || null;
 
@@ -141,8 +141,14 @@ client.on("messageCreate", async (msg) => {
       r => r.left >= ALERT_B_LEFT_MIN && r.right < ALERT_B_RIGHT_MAX
     );
 
+    // MODIFIED ALERT C — left > 3 AND right < 100
     const hitsC = rows.filter(
-      r => r.right < ALERT_C_RIGHT_MAX
+      r => r.left > 3 && r.right < ALERT_C_RIGHT_MAX
+    );
+
+    // NEW ALERT D — right 1–19
+    const hitsD = rows.filter(
+      r => r.right >= 1 && r.right <= 19
     );
 
     // Debug logging
@@ -155,11 +161,15 @@ client.on("messageCreate", async (msg) => {
     if (hitsC.length)
       console.log("ALERT C:", hitsC.map(h => `(${h.left} / ${h.right})`));
 
-    if (!hitsA.length && !hitsB.length && !hitsC.length) return;
+    if (hitsD.length)
+      console.log("ALERT D (right 1-19):", hitsD.map(h => `(${h.left} / ${h.right})`));
+
+    if (!hitsA.length && !hitsB.length && !hitsC.length && !hitsD.length) return;
 
     const packA = hitsA.map(h => `(${h.left} / ${h.right})`);
     const packB = hitsB.map(h => `(${h.left} / ${h.right})`);
     const packC = hitsC.map(h => `(${h.left} / ${h.right})`);
+    const packD = hitsD.map(h => `(${h.left} / ${h.right})`);
 
     //-----------------------------------------------------
     // PUSHOVER NOTIFICATIONS
@@ -171,7 +181,10 @@ client.on("messageCreate", async (msg) => {
       await sendPushover("Alert B — left>=30 & right<600:\n" + packB.join("\n"));
 
     if (hitsC.length)
-      await sendPushover("Alert C — right<100:\n" + packC.join("\n"));
+      await sendPushover("Alert C — left>3 & right<100:\n" + packC.join("\n"));
+
+    if (hitsD.length)
+      await sendPushover("Alert D — right between 1 and 19:\n" + packD.join("\n"));
 
     //-----------------------------------------------------
     // DISCORD NOTIFICATIONS
@@ -187,7 +200,10 @@ client.on("messageCreate", async (msg) => {
           ch.send(`${NOTIFY_PREFIX} **Alert B — left>=20 & right<600**\n${packB.join("\n")}`);
 
         if (hitsC.length)
-          ch.send(`${NOTIFY_PREFIX} **Alert C — right<100**\n${packC.join("\n")}`);
+          ch.send(`${NOTIFY_PREFIX} **Alert C — left>3 & right<100**\n${packC.join("\n")}`);
+
+        if (hitsD.length)
+          ch.send(`${NOTIFY_PREFIX} **Alert D — right between 1 and 19**\n${packD.join("\n")}`);
       }
     }
 
@@ -206,5 +222,3 @@ client.on("messageCreate", async (msg) => {
     console.error("LOGIN FAILED:", err);
   }
 })();
-
-
