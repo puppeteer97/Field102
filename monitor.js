@@ -11,12 +11,12 @@ const APP_BOT_ID = "1312830013573169252";
 
 // NEW ALERT RULES
 const ALERT_A_LEFT_MIN = 20;
-const ALERT_A_RIGHT_MAX = 400;
+const ALERT_A_RIGHT_MAX = 200;
 
 const ALERT_B_LEFT_MIN = 30;
-const ALERT_B_RIGHT_MAX = 600;
+const ALERT_B_RIGHT_MAX = 400;
 
-const ALERT_C_RIGHT_MAX = 100; // irrespective of left (your override modifies this logic)
+const ALERT_C_RIGHT_MAX = 100;
 
 const ALERT_CHANNEL_ID = process.env.CHANNEL_ID || null;
 
@@ -31,7 +31,7 @@ const KEEPALIVE_URL =
   null;
 
 //---------------------------------------------------------
-// DISCORD CLIENT (AUTO-RECONNECT SAFE)
+// DISCORD CLIENT
 //---------------------------------------------------------
 const client = new Client({
   intents: [
@@ -54,18 +54,14 @@ if (KEEPALIVE_URL) {
 }
 
 //---------------------------------------------------------
-// PARSER (UPDATED TO HANDLE EMOJIS + MULTIPLE FIELDS)
+// PARSER
 //---------------------------------------------------------
 function parseRow(line) {
   if (!line.includes("¦")) return null;
 
-  // Extract ALL numbers inside backticks, regardless of spacing or emojis
   const matches = [...line.matchAll(/` *(\d{1,5}) *`/g)];
-
   if (matches.length < 2) return null;
 
-  // LEFT = first number
-  // RIGHT = last number (before name field)
   const left = parseInt(matches[0][1], 10);
   const right = parseInt(matches[matches.length - 1][1], 10);
 
@@ -100,26 +96,14 @@ async function sendPushover(msg) {
 }
 
 //---------------------------------------------------------
-// DISCORD SHARD EVENTS
+// SHARD EVENTS
 //---------------------------------------------------------
 client.on("ready", () => {
   console.log("Bot ready:", client.user?.tag);
 });
 
-client.on("shardDisconnect", (event, shardID) => {
-  console.log("⚠️ SHARD DISCONNECTED:", shardID, event.code, event.reason);
-});
-
-client.on("shardReconnecting", (id) => {
-  console.log("♻️ Reconnecting shard:", id);
-});
-
-client.on("shardResume", (id) => {
-  console.log("🔗 Shard resumed:", id);
-});
-
 //---------------------------------------------------------
-// MAIN MESSAGE HANDLER
+// MAIN HANDLER
 //---------------------------------------------------------
 client.on("messageCreate", async (msg) => {
   try {
@@ -130,7 +114,7 @@ client.on("messageCreate", async (msg) => {
     if (!rows.length) return;
 
     //-----------------------------------------------------
-    // ALERTS (NEW RULES)
+    // EXISTING ALERTS (UNCHANGED)
     //-----------------------------------------------------
 
     const hitsA = rows.filter(
@@ -141,70 +125,74 @@ client.on("messageCreate", async (msg) => {
       r => r.left >= ALERT_B_LEFT_MIN && r.right < ALERT_B_RIGHT_MAX
     );
 
-    // MODIFIED ALERT C — left > 3 AND right < 100
     const hitsC = rows.filter(
       r => r.left > 3 && r.right < ALERT_C_RIGHT_MAX
     );
 
-    // NEW ALERT D — right 1–19
     const hitsD = rows.filter(
       r => r.right >= 1 && r.right <= 19
     );
 
-    // Debug logging
-    if (hitsA.length)
-      console.log("ALERT A:", hitsA.map(h => `(${h.left} / ${h.right})`));
+    //-----------------------------------------------------
+    // ADDITIONAL ALERT E — Xmas25 ONLY
+    //-----------------------------------------------------
 
-    if (hitsB.length)
-      console.log("ALERT B:", hitsB.map(h => `(${h.left} / ${h.right})`));
+    const rawLines = msg.content.split(/\r?\n/);
 
-    if (hitsC.length)
-      console.log("ALERT C:", hitsC.map(h => `(${h.left} / ${h.right})`));
+    const hitsE = rawLines
+      .map(line => {
+        const parsed = parseRow(line);
+        if (!parsed) return null;
 
-    if (hitsD.length)
-      console.log("ALERT D (right 1-19):", hitsD.map(h => `(${h.left} / ${h.right})`));
-
-    if (!hitsA.length && !hitsB.length && !hitsC.length && !hitsD.length) return;
-
-    const packA = hitsA.map(h => `(${h.left} / ${h.right})`);
-    const packB = hitsB.map(h => `(${h.left} / ${h.right})`);
-    const packC = hitsC.map(h => `(${h.left} / ${h.right})`);
-    const packD = hitsD.map(h => `(${h.left} / ${h.right})`);
+        if (parsed.left >= 20 && /Xmas25/i.test(line)) {
+          return parsed;
+        }
+        return null;
+      })
+      .filter(Boolean);
 
     //-----------------------------------------------------
-    // PUSHOVER NOTIFICATIONS
+    // LOGGING
     //-----------------------------------------------------
-    if (hitsA.length)
-      await sendPushover("Alert A — left>=20 & right<400:\n" + packA.join("\n"));
+    if (hitsA.length) console.log("ALERT A:", hitsA);
+    if (hitsB.length) console.log("ALERT B:", hitsB);
+    if (hitsC.length) console.log("ALERT C:", hitsC);
+    if (hitsD.length) console.log("ALERT D:", hitsD);
+    if (hitsE.length) console.log("ALERT E (Xmas25):", hitsE);
 
-    if (hitsB.length)
-      await sendPushover("Alert B — left>=30 & right<600:\n" + packB.join("\n"));
+    if (
+      !hitsA.length &&
+      !hitsB.length &&
+      !hitsC.length &&
+      !hitsD.length &&
+      !hitsE.length
+    ) return;
 
-    if (hitsC.length)
-      await sendPushover("Alert C — left>3 & right<100:\n" + packC.join("\n"));
-
-    if (hitsD.length)
-      await sendPushover("Alert D — right between 1 and 19:\n" + packD.join("\n"));
+    const pack = hits => hits.map(h => `(${h.left} / ${h.right})`).join("\n");
 
     //-----------------------------------------------------
-    // DISCORD NOTIFICATIONS
+    // PUSHOVER
+    //-----------------------------------------------------
+    if (hitsA.length) await sendPushover("Alert A:\n" + pack(hitsA));
+    if (hitsB.length) await sendPushover("Alert B:\n" + pack(hitsB));
+    if (hitsC.length) await sendPushover("Alert C:\n" + pack(hitsC));
+    if (hitsD.length) await sendPushover("Alert D:\n" + pack(hitsD));
+    if (hitsE.length)
+      await sendPushover("Alert E — Xmas25:\n" + pack(hitsE));
+
+    //-----------------------------------------------------
+    // DISCORD
     //-----------------------------------------------------
     if (ALERT_CHANNEL_ID) {
       const ch = await client.channels.fetch(ALERT_CHANNEL_ID).catch(() => {});
+      if (!ch?.send) return;
 
-      if (ch?.send) {
-        if (hitsA.length)
-          ch.send(`${NOTIFY_PREFIX} **Alert A — left>=10 & right<300**\n${packA.join("\n")}`);
-
-        if (hitsB.length)
-          ch.send(`${NOTIFY_PREFIX} **Alert B — left>=20 & right<600**\n${packB.join("\n")}`);
-
-        if (hitsC.length)
-          ch.send(`${NOTIFY_PREFIX} **Alert C — left>3 & right<100**\n${packC.join("\n")}`);
-
-        if (hitsD.length)
-          ch.send(`${NOTIFY_PREFIX} **Alert D — right between 1 and 19**\n${packD.join("\n")}`);
-      }
+      if (hitsA.length) ch.send(`**Alert A**\n${pack(hitsA)}`);
+      if (hitsB.length) ch.send(`**Alert B**\n${pack(hitsB)}`);
+      if (hitsC.length) ch.send(`**Alert C**\n${pack(hitsC)}`);
+      if (hitsD.length) ch.send(`**Alert D**\n${pack(hitsD)}`);
+      if (hitsE.length)
+        ch.send(`**Alert E — Xmas25**\n${pack(hitsE)}`);
     }
 
   } catch (err) {
