@@ -9,7 +9,7 @@ import fetch from "node-fetch";
 //---------------------------------------------------------
 const APP_BOT_ID = "1312830013573169252";
 
-// NEW ALERT RULES
+// ALERT RULES
 const ALERT_A_LEFT_MIN = 20;
 const ALERT_A_RIGHT_MAX = 200;
 
@@ -17,6 +17,8 @@ const ALERT_B_LEFT_MIN = 30;
 const ALERT_B_RIGHT_MAX = 400;
 
 const ALERT_C_RIGHT_MAX = 100;
+
+const ALERT_E_LEFT_MIN = 10; // ✅ NEW: Xmas25 alert
 
 const ALERT_CHANNEL_ID = process.env.CHANNEL_ID || null;
 
@@ -54,18 +56,22 @@ if (KEEPALIVE_URL) {
 }
 
 //---------------------------------------------------------
-// PARSER
+// PARSER (EXTENDED — SAFE)
 //---------------------------------------------------------
 function parseRow(line) {
   if (!line.includes("¦")) return null;
 
-  const matches = [...line.matchAll(/` *(\d{1,5}) *`/g)];
-  if (matches.length < 2) return null;
+  // capture ANY backticked values (numbers or text)
+  const ticks = [...line.matchAll(/` *([^`]+?) *`/g)];
+  if (ticks.length < 2) return null;
 
-  const left = parseInt(matches[0][1], 10);
-  const right = parseInt(matches[matches.length - 1][1], 10);
+  const leftRaw = ticks[0][1].trim();
+  const rightRaw = ticks[ticks.length - 1][1].trim();
 
-  return { left, right };
+  const left = parseInt(leftRaw, 10);
+  const right = parseInt(rightRaw, 10);
+
+  return { left, right, leftRaw, rightRaw };
 }
 
 function parseNairiMessage(text) {
@@ -81,7 +87,7 @@ function parseNairiMessage(text) {
 async function sendPushover(msg) {
   if (!PUSHOVER_TOKEN || !PUSHOVER_USER) return;
   try {
-    const r = await fetch("https://api.pushover.net/1/messages.json", {
+    await fetch("https://api.pushover.net/1/messages.json", {
       method: "POST",
       body: new URLSearchParams({
         token: PUSHOVER_TOKEN,
@@ -89,14 +95,13 @@ async function sendPushover(msg) {
         message: msg
       })
     });
-    console.log("[Pushover] Status:", r.status);
   } catch (err) {
     console.log("[Pushover ERROR]", err);
   }
 }
 
 //---------------------------------------------------------
-// SHARD EVENTS
+// READY
 //---------------------------------------------------------
 client.on("ready", () => {
   console.log("Bot ready:", client.user?.tag);
@@ -134,31 +139,11 @@ client.on("messageCreate", async (msg) => {
     );
 
     //-----------------------------------------------------
-    // ADDITIONAL ALERT E — Xmas25 ONLY
+    // ✅ NEW ALERT E — Xmas25
     //-----------------------------------------------------
-
-    const rawLines = msg.content.split(/\r?\n/);
-
-    const hitsE = rawLines
-      .map(line => {
-        const parsed = parseRow(line);
-        if (!parsed) return null;
-
-        if (parsed.left >= 20 && /Xmas25/i.test(line)) {
-          return parsed;
-        }
-        return null;
-      })
-      .filter(Boolean);
-
-    //-----------------------------------------------------
-    // LOGGING
-    //-----------------------------------------------------
-    if (hitsA.length) console.log("ALERT A:", hitsA);
-    if (hitsB.length) console.log("ALERT B:", hitsB);
-    if (hitsC.length) console.log("ALERT C:", hitsC);
-    if (hitsD.length) console.log("ALERT D:", hitsD);
-    if (hitsE.length) console.log("ALERT E (Xmas25):", hitsE);
+    const hitsE = rows.filter(
+      r => r.left >= ALERT_E_LEFT_MIN && r.rightRaw === "Xmas25"
+    );
 
     if (
       !hitsA.length &&
@@ -168,7 +153,7 @@ client.on("messageCreate", async (msg) => {
       !hitsE.length
     ) return;
 
-    const pack = hits => hits.map(h => `(${h.left} / ${h.right})`).join("\n");
+    const pack = hits => hits.map(h => `(${h.leftRaw} / ${h.rightRaw})`).join("\n");
 
     //-----------------------------------------------------
     // PUSHOVER
