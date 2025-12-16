@@ -22,15 +22,18 @@ const ALERT_E_LEFT_MIN = 10; // ✅ NEW: Xmas25 alert
 
 const ALERT_CHANNEL_ID = process.env.CHANNEL_ID || null;
 
-const PUSHOVER_TOKEN = process.env.PUSHOVER_TOKEN;
-const PUSHOVER_USER = process.env.PUSHOVER_USER;
-
 const NOTIFY_PREFIX = process.env.NOTIFY_PREFIX || "";
 
 const KEEPALIVE_URL =
   process.env.KEEPALIVE_URL ||
   process.env.RENDER_EXTERNAL_URL ||
   null;
+
+//---------------------------------------------------------
+// NTFY
+//---------------------------------------------------------
+const NTFY_TOPIC = "ocr-alerts-sofi";
+const NTFY_URL = `https://ntfy.sh/${NTFY_TOPIC}`;
 
 //---------------------------------------------------------
 // DISCORD CLIENT
@@ -61,7 +64,6 @@ if (KEEPALIVE_URL) {
 function parseRow(line) {
   if (!line.includes("¦")) return null;
 
-  // capture ANY backticked values (numbers or text)
   const ticks = [...line.matchAll(/` *([^`]+?) *`/g)];
   if (ticks.length < 2) return null;
 
@@ -82,21 +84,20 @@ function parseNairiMessage(text) {
 }
 
 //---------------------------------------------------------
-// PUSHOVER
+// NTFY SENDER (REPLACES PUSHOVER)
 //---------------------------------------------------------
-async function sendPushover(msg) {
-  if (!PUSHOVER_TOKEN || !PUSHOVER_USER) return;
+async function sendNtfy(msg) {
   try {
-    await fetch("https://api.pushover.net/1/messages.json", {
+    await fetch(NTFY_URL, {
       method: "POST",
-      body: new URLSearchParams({
-        token: PUSHOVER_TOKEN,
-        user: PUSHOVER_USER,
-        message: msg
-      })
+      headers: {
+        "Title": "OCR ALERT",
+        "Priority": "3"
+      },
+      body: msg
     });
   } catch (err) {
-    console.log("[Pushover ERROR]", err);
+    console.log("[ntfy ERROR]", err);
   }
 }
 
@@ -121,7 +122,6 @@ client.on("messageCreate", async (msg) => {
     //-----------------------------------------------------
     // EXISTING ALERTS (UNCHANGED)
     //-----------------------------------------------------
-
     const hitsA = rows.filter(
       r => r.left >= ALERT_A_LEFT_MIN && r.right < ALERT_A_RIGHT_MAX
     );
@@ -153,17 +153,18 @@ client.on("messageCreate", async (msg) => {
       !hitsE.length
     ) return;
 
-    const pack = hits => hits.map(h => `(${h.leftRaw} / ${h.rightRaw})`).join("\n");
+    const pack = hits =>
+      hits.map(h => `(${h.leftRaw} / ${h.rightRaw})`).join("\n");
 
     //-----------------------------------------------------
-    // PUSHOVER
+    // NTFY (TEXT FORMAT UNCHANGED)
     //-----------------------------------------------------
-    if (hitsA.length) await sendPushover("Alert A:\n" + pack(hitsA));
-    if (hitsB.length) await sendPushover("Alert B:\n" + pack(hitsB));
-    if (hitsC.length) await sendPushover("Alert C:\n" + pack(hitsC));
-    if (hitsD.length) await sendPushover("Alert D:\n" + pack(hitsD));
+    if (hitsA.length) await sendNtfy("Alert A:\n" + pack(hitsA));
+    if (hitsB.length) await sendNtfy("Alert B:\n" + pack(hitsB));
+    if (hitsC.length) await sendNtfy("Alert C:\n" + pack(hitsC));
+    if (hitsD.length) await sendNtfy("Alert D:\n" + pack(hitsD));
     if (hitsE.length)
-      await sendPushover("Alert E — Xmas25:\n" + pack(hitsE));
+      await sendNtfy("Alert E — Xmas25:\n" + pack(hitsE));
 
     //-----------------------------------------------------
     // DISCORD
