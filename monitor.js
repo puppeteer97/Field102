@@ -32,7 +32,7 @@ const KEEPALIVE_URL =
 //---------------------------------------------------------
 // NTFY
 //---------------------------------------------------------
-const NTFY_TOPIC = "ocr-alerts-sofi";
+const NTFY_TOPIC = "puppeteer-nairi";
 const NTFY_URL = `https://ntfy.sh/${NTFY_TOPIC}`;
 
 //---------------------------------------------------------
@@ -92,7 +92,7 @@ async function sendNtfy(msg) {
       method: "POST",
       headers: {
         "Title": "OCR ALERT",
-        "Priority": "3"
+        "Priority": "5"
       },
       body: msg
     });
@@ -196,3 +196,4 @@ client.on("messageCreate", async (msg) => {
     console.error("LOGIN FAILED:", err);
   }
 })();
+
