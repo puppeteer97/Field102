@@ -18,7 +18,7 @@ const ALERT_B_RIGHT_MAX = 400;
 
 const ALERT_C_RIGHT_MAX = 100;
 
-const ALERT_E_LEFT_MIN = 10; // ✅ NEW: Xmas25 alert
+const ALERT_E_LEFT_MIN = 20; // ✅ NEW: Xmas25 alert
 
 const ALERT_CHANNEL_ID = process.env.CHANNEL_ID || null;
 
@@ -196,4 +196,5 @@ client.on("messageCreate", async (msg) => {
     console.error("LOGIN FAILED:", err);
   }
 })();
+
 
