@@ -11,14 +11,14 @@ const APP_BOT_ID = "1312830013573169252";
 
 // ALERT RULES
 const ALERT_A_LEFT_MIN = 20;
-const ALERT_A_RIGHT_MAX = 200;
+const ALERT_A_RIGHT_MAX = 100;
 
 const ALERT_B_LEFT_MIN = 30;
-const ALERT_B_RIGHT_MAX = 400;
+const ALERT_B_RIGHT_MAX = 200;
 
 const ALERT_C_RIGHT_MAX = 100;
 
-const ALERT_E_LEFT_MIN = 20; // ✅ NEW: Xmas25 alert
+const ALERT_E_LEFT_MIN = 40; // ✅ NEW: Xmas25 alert
 
 const ALERT_CHANNEL_ID = process.env.CHANNEL_ID || null;
 
@@ -131,7 +131,7 @@ client.on("messageCreate", async (msg) => {
     );
 
     const hitsC = rows.filter(
-      r => r.left > 3 && r.right < ALERT_C_RIGHT_MAX
+      r => r.left > 10 && r.right < ALERT_C_RIGHT_MAX
     );
 
     const hitsD = rows.filter(
