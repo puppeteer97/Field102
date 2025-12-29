@@ -131,7 +131,7 @@ client.on("messageCreate", async (msg) => {
     );
 
     const hitsC = rows.filter(
-      r => r.left > 10 && r.right < ALERT_C_RIGHT_MAX
+      r => r.left > 5 && r.right < ALERT_C_RIGHT_MAX
     );
 
     const hitsD = rows.filter(
